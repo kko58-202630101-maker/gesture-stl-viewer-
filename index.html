@@ -1,40 +1,292 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Tracking STL Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #webcam-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 240px;
+            height: 180px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #3b82f6;
+            z-index: 10;
+            transform: scaleX(-1); /* 좌우 반전으로 거울 모드 */
+        }
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #ui-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            text-align: center;
+        }
+        .file-upload-btn {
+            background: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .file-upload-btn:hover {
+            background: #2563eb;
+        }
+        #file-input {
+            display: none;
+        }
+        #status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+    </style>
 
-<title>Hand STL Controller</title>
-
-<link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
-
 <body>
 
-<div id="ui">
+    <div id="canvas-container"></div>
+    
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
 
-<h2>Hand STL Controller</h2>
+    <div id="ui-container">
+        <label for="file-input" class="file-upload-btn">STL 파일 업로드</label>
+        <input type="file" id="file-input" accept=".stl">
+        <div id="status">웹캠 초기화 중... 손을 올리면 주먹을 쥐어 회전해보세요.</div>
+    </div>
 
-<input
-type="file"
-id="fileInput"
-accept=".stl">
+    <script>
+        // --- 1. 변수 정의 및 초기화 ---
+        const videoElement = document.getElementById('webcam');
+        const fileInput = document.getElementById('file-input');
+        const statusElement = document.getElementById('status');
+        
+        let scene, camera, renderer, currentMesh;
+        let prevHandX = null, prevHandY = null;
+        let isPinching = false; // 주먹을 쥐었거나 집게 손가락을 모았을 때 조작 모드 활성화
 
-<p>
-검지 이동 = 모델 이동<br>
-엄지+검지 집기 = 회전<br>
-손 벌리기 = 확대
-</p>
+        // --- 2. Three.js 3D 환경 설정 ---
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
 
-</div>
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 150);
 
-<video
-id="video"
-autoplay
-playsinline>
-</video>
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
 
-<script type="module" src="main.js"></script>
+            // 조명 추가
+            const ambientLight = new THREE.AmbientLight(0x666666);
+            scene.add(ambientLight);
 
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(1, 1, 1).normalize();
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x555555, 0.5);
+            dirLight2.position.set(-1, -1, -1).normalize();
+            scene.add(dirLight2);
+
+            // 기본 도형 (STL 업로드 전 보여줄 상자)
+            const geometry = new THREE.BoxGeometry(30, 30, 30);
+            const material = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.4, metalness: 0.2 });
+            currentMesh = new THREE.Mesh(geometry, material);
+            scene.add(currentMesh);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 손동작이 없을 때는 기본적으로 아주 천천히 자동 회전
+            if (!isPinching && currentMesh) {
+                currentMesh.rotation.y += 0.005;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 3. STL 파일 로더 기능 ---
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusElement.innerText = "파일 로딩 중...";
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                const contents = event.target.result;
+                const loader = new THREE.STLLoader();
+                
+                try {
+                    const geometry = loader.parse(contents);
+                    
+                    // 기존 모델 제거
+                    if (currentMesh) scene.remove(currentMesh);
+
+                    const material = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.4, metalness: 0.2 });
+                    currentMesh = new THREE.Mesh(geometry, material);
+
+                    // 모델의 크기와 위치를 화면 중앙으로 보정
+                    geometry.computeBoundingBox();
+                    const boundingBox = geometry.boundingBox;
+                    const center = new THREE.Vector3();
+                    boundingBox.getCenter(center);
+                    geometry.center(); // 중심을 0,0,0으로
+
+                    // 크기 자동 맞춤
+                    const size = new THREE.Vector3();
+                    boundingBox.getSize(size);
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / 4 * Math.tan(fov * 2));
+                    cameraZ *= 2.5; // 여유 공간
+                    camera.position.z = cameraZ;
+
+                    scene.add(currentMesh);
+                    statusElement.innerText = `${file.name} 로드 완료!`;
+                } catch (error) {
+                    statusElement.innerText = "STL 파일 파싱 실패. 올바른 파일인지 확인하세요.";
+                    console.error(error);
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        });
+
+        // --- 4. MediaPipe Hand Tracking 설정 ---
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0]; // 첫 번째 손만 인식
+                
+                // 🛠️ 제스처 판단: 검지 손가락 끝(8)과 엄지 손가락 끝(4)의 거리 계산
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                
+                const distance = Math.sqrt(
+                    Math.pow(thumbTip.x - indexTip.x, 2) +
+                    Math.pow(thumbTip.y - indexTip.y, 2) +
+                    Math.pow(thumbTip.z - indexTip.z, 2)
+                );
+
+                // 손목 기준점(0)을 중심으로 회전 제어
+                const wristX = landmarks[0].x;
+                const wristY = landmarks[0].y;
+
+                // 거리가 가까우면(집게 손가락을 모으거나 주먹을 쥐면) 잡기(Pinch) 상태로 판단
+                if (distance < 0.05) {
+                    isPinching = true;
+                    statusElement.innerText = "도형 잡음 ✊ (손을 움직여 회전시키세요)";
+
+                    if (prevHandX !== null && prevHandY !== null) {
+                        // 손 이동량 계산 (MediaPipe는 좌우가 반대이므로 감도 조정 시 유의)
+                        const deltaX = (wristX - prevHandX) * 5;
+                        const deltaY = (wristY - prevHandY) * 5;
+
+                        if (currentMesh) {
+                            currentMesh.rotation.y += deltaX; // 가로 움직임 -> Y축 회전
+                            currentMesh.rotation.x += deltaY; // 세로 움직임 -> X축 회전
+                        }
+                    }
+                    prevHandX = wristX;
+                    prevHandY = wristY;
+                } else {
+                    // 손을 펴면 회전 멈춤
+                    isPinching = false;
+                    statusElement.innerText = "🖐️ 손 인식 중 (주먹을 쥐면 조작 가능)";
+                    prevHandX = null;
+                    prevHandY = null;
+                }
+            } else {
+                isPinching = false;
+                statusElement.innerText = "👋 카메라에 손을 보여주세요.";
+                prevHandX = null;
+                prevHandY = null;
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        hands.onResults(onHandResults);
+
+        // 웹캠 피드 활성화
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+        
+        // 초기화 실행
+        init3D();
+        cameraUtils.start().then(() => {
+            statusElement.innerText = "시스템 준비 완료! STL 파일을 업로드 하세요.";
+        }).catch(err => {
+            statusElement.innerText = "웹캠을 시작할 수 없습니다. 권한을 확인하세요.";
+            console.error(err);
+        });
+
+    </script>
 </body>
 </html>
