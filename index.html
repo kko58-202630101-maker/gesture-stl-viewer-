@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Hand STL Controller</title>
+
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div id="ui">
+
+<h2>Hand STL Controller</h2>
+
+<input
+type="file"
+id="fileInput"
+accept=".stl">
+
+<p>
+검지 이동 = 모델 이동<br>
+엄지+검지 집기 = 회전<br>
+손 벌리기 = 확대
+</p>
+
+</div>
+
+<video
+id="video"
+autoplay
+playsinline>
+</video>
+
+<script type="module" src="main.js"></script>
+
+</body>
+</html>
