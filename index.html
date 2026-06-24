@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hand Tracking STL Viewer</title>
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="data:;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==">
     <style>
         body {
             margin: 0;
@@ -74,8 +74,8 @@
         }
     </style>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/rawgit/mrdoob/three.js/master/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -128,6 +128,7 @@
             dirLight2.position.set(-1, -1, -1).normalize();
             scene.add(dirLight2);
 
+            // 기본 큐브 모델 생성
             const geometry = new THREE.BoxGeometry(30, 30, 30);
             const material = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.4, metalness: 0.2 });
             currentMesh = new THREE.Mesh(geometry, material);
@@ -160,7 +161,8 @@
             
             reader.onload = function(event) {
                 const contents = event.target.result;
-                // 전역 고전 방식으로 Loader 호출하여 모듈 오류 원천 차단
+                
+                // 안심하고 사용할 수 있는 글로벌 객체 참조
                 const loader = new THREE.STLLoader();
                 
                 try {
@@ -197,6 +199,7 @@
                 const thumbTip = landmarks[4];
                 const indexTip = landmarks[8];
                 
+                // 엄지와 검지 거리 계산
                 const distance = Math.sqrt(
                     Math.pow(thumbTip.x - indexTip.x, 2) +
                     Math.pow(thumbTip.y - indexTip.y, 2)
@@ -210,7 +213,6 @@
                     statusElement.innerText = "도형 잡음 ✊ (손을 움직여보세요)";
 
                     if (prevHandX !== null && prevHandY !== null) {
-                        // 거울 모드에 맞게 좌우 반전 축 제어 보정
                         const deltaX = (wristX - prevHandX) * 4;
                         const deltaY = (wristY - prevHandY) * 4;
 
