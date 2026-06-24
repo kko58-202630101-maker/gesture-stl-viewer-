@@ -8,7 +8,6 @@ FilesetResolver,
 HandLandmarker
 }
 from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-
 let scene;
 let camera;
 let renderer;
